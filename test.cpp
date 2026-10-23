@@ -11,7 +11,7 @@ public:
         std::string date;
         int minutes;
     };
-    std::vector<StudyRecord> selectRecords(sqlite3*);
+    bool selectRecords(sqlite3*,std::vector<StudyRecord>&);
 
 private:
     bool insertRecordDynamicContent(sqlite3*,sqlite3_stmt*,const std::string&);
@@ -37,12 +37,17 @@ int main(){
     sqlite_test.insertRecord(db);
 
     //  一覧表示
-    records = sqlite_test.selectRecords(db);
-    for(const SQLiteTest::StudyRecord& record : records){
-        std::cout << "ID: " << record.id << "\n"
-                    << "学習内容: " << record.content << "\n"
-                    << "学習日: " << record.date << "\n"
-                    << "学習時間: " << record.minutes << "分\n" << std::endl;
+    if(!sqlite_test.selectRecords(db, records)){
+        std::cout << "SELECT失敗" << std::endl;
+    }else if(records.empty()){
+        std::cout << "レコードが空です" << std::endl;
+    }else{
+        for(const SQLiteTest::StudyRecord& record : records){
+            std::cout << "ID: " << record.id << "\n"
+                        << "学習内容: " << record.content << "\n"
+                        << "学習日: " << record.date << "\n"
+                        << "学習時間: " << record.minutes << "分\n" << std::endl;
+        }
     }
     // データベースクローズ
     sqlite3_close(db);
@@ -148,8 +153,8 @@ void SQLiteTest::insertRecord(sqlite3* db){
     sqlite3_finalize(insert_stmt);
     return;
 }
-std::vector<SQLiteTest::StudyRecord> SQLiteTest::selectRecords(sqlite3* db){
-    std::vector<SQLiteTest::StudyRecord> records;
+bool SQLiteTest::selectRecords(sqlite3* db,std::vector<SQLiteTest::StudyRecord>& records){
+    std::vector<SQLiteTest::StudyRecord> records_local;
     sqlite3_stmt* select_stmt = nullptr;
     const char* select_sql = 
         "SELECT id, content, date, minutes"
@@ -167,7 +172,7 @@ std::vector<SQLiteTest::StudyRecord> SQLiteTest::selectRecords(sqlite3* db){
         std::cout << "select prepare失敗\n"
          << sqlite3_errmsg(db)
          << std::endl;
-        return records;
+        return false;
     }
 
     while((result = sqlite3_step(select_stmt)) == SQLITE_ROW){
@@ -176,15 +181,19 @@ std::vector<SQLiteTest::StudyRecord> SQLiteTest::selectRecords(sqlite3* db){
         record.content = reinterpret_cast<const char*>(sqlite3_column_text(select_stmt, 1));
         record.date = reinterpret_cast<const char*>(sqlite3_column_text(select_stmt, 2));
         record.minutes = sqlite3_column_int(select_stmt, 3);
-        records.push_back(record);
+        records_local.push_back(record);
     }
     if(result != SQLITE_DONE){
         std::cout << "SELECTの処理に失敗\n"
          << sqlite3_errmsg(db)
          << std::endl;
+         sqlite3_finalize(select_stmt);
+         return false;
+    }else{
+        records = records_local;
     }
     sqlite3_finalize(select_stmt);
-    return records;
+    return true;
 }
 bool SQLiteTest::insertRecordDynamicContent(sqlite3* db, sqlite3_stmt* insert_stmt, const std::string &content){
     int result = sqlite3_bind_text(insert_stmt, 1, content.c_str(), -1, SQLITE_TRANSIENT);
